@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Model } from "@earendil-works/pi-ai";
-import { resolveModel, suggestModels } from "../src/agent.js";
+import { resolveModel, suggestModels, WorkflowAgent } from "../src/agent.js";
 
 function model(provider: string, id: string): Model<any> {
   return { provider, id } as Model<any>;
@@ -95,4 +95,33 @@ test("suggestModels prioritizes the default provider", () => {
     "openrouter/anthropic/claude-sonnet-4",
     "anthropic/claude-sonnet-4-20250514",
   ]);
+});
+
+test("WorkflowAgent binds extensions before prompting subagents", async () => {
+  const calls: string[] = [];
+  const session = {
+    messages: [{ role: "assistant", content: [{ type: "text", text: "done" }] }],
+    async bindExtensions() {
+      calls.push("bind");
+    },
+    async prompt(prompt: string) {
+      calls.push(`prompt:${prompt}`);
+    },
+    abort() {
+      calls.push("abort");
+    },
+    dispose() {
+      calls.push("dispose");
+    },
+  };
+
+  const agent = new WorkflowAgent({
+    tools: [],
+    createSession: async () => ({ session }) as any,
+  });
+
+  const result = await agent.run("write report");
+
+  assert.equal(result, "done");
+  assert.deepEqual(calls, ["bind", "prompt:write report", "dispose"]);
 });
