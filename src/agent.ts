@@ -11,6 +11,8 @@ import {
 import type { Static, TSchema } from "typebox";
 import { createStructuredOutputTool, type StructuredOutputCapture } from "./structured-output.js";
 
+type CreateWorkflowAgentSession = (options: CreateAgentSessionOptions) => ReturnType<typeof createAgentSession>;
+
 export interface WorkflowAgentOptions {
   cwd?: string;
   /** Extra tools available to the subagent in addition to the structured output tool. */
@@ -19,6 +21,8 @@ export interface WorkflowAgentOptions {
   session?: Partial<CreateAgentSessionOptions>;
   /** Extra system guidance prepended to every subagent task. */
   instructions?: string;
+  /** @internal Test hook for substituting the Pi session factory. */
+  createSession?: CreateWorkflowAgentSession;
 }
 
 export interface AgentRunOptions<TSchemaDef extends TSchema | undefined = undefined> {
@@ -38,12 +42,14 @@ export class WorkflowAgent {
   private readonly baseTools: ToolDefinition[];
   private readonly sessionOptions: Partial<CreateAgentSessionOptions>;
   private readonly instructions?: string;
+  private readonly createSession: CreateWorkflowAgentSession;
 
   constructor(options: WorkflowAgentOptions = {}) {
     this.cwd = options.cwd ?? process.cwd();
     this.baseTools = options.tools ?? createCodingTools(this.cwd);
     this.sessionOptions = options.session ?? {};
     this.instructions = options.instructions;
+    this.createSession = options.createSession ?? createAgentSession;
   }
 
   async run<TSchemaDef extends TSchema | undefined = undefined>(
@@ -58,7 +64,7 @@ export class WorkflowAgent {
     }
 
     const agentDir = getAgentDir();
-    const { session } = await createAgentSession({
+    const { session } = await this.createSession({
       cwd: this.cwd,
       agentDir,
       sessionManager: SessionManager.inMemory(this.cwd),
