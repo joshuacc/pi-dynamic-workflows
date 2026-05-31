@@ -76,6 +76,9 @@ export class WorkflowAgent {
         removeAbortListener = () => options.signal?.removeEventListener("abort", onAbort);
       }
 
+      await session.bindExtensions({});
+      if (options.signal?.aborted) throw new Error("Subagent was aborted");
+
       await session.prompt(this.buildPrompt(prompt, options as AgentRunOptions<any>, Boolean(options.schema)));
       if (options.signal?.aborted) throw new Error("Subagent was aborted");
 
