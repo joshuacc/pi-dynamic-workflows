@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Model } from "@earendil-works/pi-ai";
+import { DefaultResourceLoader, type ExtensionFactory, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { resolveModel, suggestModels, WorkflowAgent } from "../src/agent.js";
 
 function model(provider: string, id: string): Model<any> {
@@ -97,31 +98,40 @@ test("suggestModels prioritizes the default provider", () => {
   ]);
 });
 
-test("WorkflowAgent binds extensions before prompting subagents", async () => {
-  const calls: string[] = [];
-  const session = {
-    messages: [{ role: "assistant", content: [{ type: "text", text: "done" }] }],
-    async bindExtensions() {
-      calls.push("bind");
-    },
-    async prompt(prompt: string) {
-      calls.push(`prompt:${prompt}`);
-    },
-    abort() {
-      calls.push("abort");
-    },
-    dispose() {
-      calls.push("dispose");
-    },
+test("WorkflowAgent runs extension session_start before subagent input handlers", async () => {
+  let sessionStarted = false;
+  const inputObservedSessionStarted: boolean[] = [];
+  const extension: ExtensionFactory = (pi) => {
+    pi.on("session_start", () => {
+      sessionStarted = true;
+    });
+    pi.on("input", () => {
+      inputObservedSessionStarted.push(sessionStarted);
+      return { action: "handled" };
+    });
   };
 
+  const cwd = process.cwd();
+  const resourceLoader = new DefaultResourceLoader({
+    cwd,
+    agentDir: getAgentDir(),
+    extensionFactories: [extension],
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+  });
+  await resourceLoader.reload();
+
   const agent = new WorkflowAgent({
+    cwd,
     tools: [],
-    createSession: async () => ({ session }) as any,
+    session: { resourceLoader },
   });
 
   const result = await agent.run("write report");
 
-  assert.equal(result, "done");
-  assert.deepEqual(calls, ["bind", "prompt:write report", "dispose"]);
+  assert.equal(result, "");
+  assert.deepEqual(inputObservedSessionStarted, [true]);
 });
